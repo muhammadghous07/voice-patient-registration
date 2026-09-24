@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Patient Registration Dashboard</title>
+<style>
+  :root {
+    --bg: #f7f8fb; --card: #ffffff; --border: #e4e7ec; --text: #1c2130;
+    --muted: #6b7280; --accent: #2563eb; --accent-soft: #eef2ff; --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header {
+    padding: 24px 32px; background: var(--card); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 32px; }
+  .config { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .config input {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; min-width: 320px;
+  }
+  .filters {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; background: var(--card);
+    padding: 14px; border-radius: 12px; border: 1px solid var(--border);
+    align-items: center;
+  }
+  .filters input {
+    padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; flex: 1; min-width: 160px;
+  }
+  button {
+    padding: 9px 16px; border-radius: 8px; border: none; background: var(--accent);
+    color: white; font-size: 14px; cursor: pointer; font-weight: 600;
+  }
+  button.secondary { background: var(--accent-soft); color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+  th, td { text-align: left; padding: 12px 14px; font-size: 13.5px; border-bottom: 1px solid var(--border); }
+  th { background: #fafbfc; color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .error { color: var(--danger); font-size: 13.5px; margin-top: 8px; margin-bottom: 12px; font-weight: 500; white-space: pre-wrap; }
+  .del { color: var(--danger); background: #fef2f2; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Patient Registration Dashboard</h1>
+    <div class="sub">Records collected by the Voice AI intake agent</div>
+  </div>
+  <div class="config">
+    <input id="apiBase" placeholder="API base URL, e.g. https://your-backend.vercel.app" />
+    <button class="secondary" onclick="saveApiBase()">Save & Refresh</button>
+  </div>
+</header>
+<main>
+  <div class="filters">
+    <input id="fLastName" placeholder="Filter by last name" />
+    <input id="fDob" type="date" placeholder="Filter by date of birth" />
+    <input id="fPhone" placeholder="Filter by phone (10 digits)" />
+    <button onclick="loadPatients()">Search</button>
+    <button class="secondary" onclick="clearFilters()">Clear</button>
+  </div>
+  <div id="errorBox" class="error"></div>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th><th>DOB</th><th>Sex</th><th>Phone</th><th>City / State</th>
+        <th>Language</th><th>Registered</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="emptyState" class="empty" style="display:none;">No patients found yet.</div>
+</main>
+
+<script>
+  const stored = localStorage.getItem("apiBase") || "https://voice-patient-registration-fixji8150-m-ghous-projects.vercel.app";
+  document.getElementById("apiBase").value = stored;
+
+  function saveApiBase() {
+    const v = document.getElementById("apiBase").value.trim().replace(/\/$/, "");
+    localStorage.setItem("apiBase", v);
+    loadPatients();
+  }
+
+  function apiBase() {
+    return (localStorage.getItem("apiBase") || document.getElementById("apiBase").value || "").replace(/\/$/, "");
+  }
+
+  function clearFilters() {
+    document.getElementById("fLastName").value = "";
+    document.getElementById("fDob").value = "";
+    document.getElementById("fPhone").value = "";
+    loadPatients();
+  }
+
+  async function loadPatients() {
+    const base = apiBase();
+    const errorBox = document.getElementById("errorBox");
+    errorBox.textContent = "";
+    if (!base) {
+      errorBox.textContent = "Pehle upar API base URL daal kar 'Save & Refresh' dabao.";
+      return;
+    }
+    const params = new URLSearchParams();
+    const lastName = document.getElementById("fLastName").value.trim();
+    const dob = document.getElementById("fDob").value.trim();
+    const phone = document.getElementById("fPhone").value.trim();
+    if (lastName) params.set("last_name", lastName);
+    if (dob) params.set("date_of_birth", dob);
+    if (phone) params.set("phone_number", phone);
+
+    try {
+      const res = await fetch(`${base}/patients?${params.toString()}`);
+      let json;
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(`Server ne JSON nahi bheja (status ${res.status}). URL sahi hai check karo.`);
+      }
+      if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
+      render(json.data || []);
+    } catch (e) {
+      errorBox.textContent =
+        `Could not load patients: ${e.message}\n` +
+        `(Agar "Failed to fetch" aa raha hai to: 1) API base URL check karo, ` +
+        `2) backend actually chal raha hai ya nahi check karo, 3) browser console (F12) me exact error dekho.)`;
+      render([]);
+    }
+  }
+
+  async function deletePatient(id) {
+    if (!confirm("Remove this patient record?")) return;
+    const base = apiBase();
+    await fetch(`${base}/patients/${id}`, { method: "DELETE" });
+    loadPatients();
+  }
+
+  function render(patients) {
+    const rows = document.getElementById("rows");
+    const empty = document.getElementById("emptyState");
+    rows.innerHTML = "";
+    empty.style.display = patients.length ? "none" : "block";
+    for (const p of patients) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><strong>${p.first_name} ${p.last_name}</strong></td>
+        <td>${p.date_of_birth}</td>
+        <td>${p.sex}</td>
+        <td>${formatPhone(p.phone_number)}</td>
+        <td>${p.city}, ${p.state}</td>
+        <td><span class="badge">${p.preferred_language || "English"}</span></td>
+        <td>${new Date(p.created_at).toLocaleString()}</td>
+        <td><button class="del" onclick="deletePatient('${p.patient_id}')">Delete</button></td>
+      `;
+      rows.appendChild(tr);
+    }
+  }
+
+  function formatPhone(digits) {
+    if (!digits || digits.length !== 10) return digits;
+    return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+  }
+
+  if (stored) loadPatients();
+</script>
+
+<!-- Official Vapi Widget Integration Script -->
+<script>
+  var apiKey = "0d484ee8-1520-4868-9a9c-81eed6d10d60"; // Public Key
+  var assistantId = "66d94d21-7cd9-4c20-b493-12329d181d8f";
+
+  (function (d, t) {
+    var g = d.createElement(t),
+        s = d.getElementsByTagName(t)[0];
+    g.src = "https://cdn.jsdelivr.net/gh/VapiAI/html-script-tag@latest/dist/assets/index.js";
+    g.defer = true;
+    g.async = true;
+    s.parentNode.insertBefore(g, s);
+    g.onload = function () {
+      window.vapiSDK.run({
+        apiKey: apiKey,
+        assistant: assistantId,
+        config: {
+          position: "bottom-right",
+          offset: "40px",
+          width: "50px",
+          height: "50px",
+          idle: {
+            color: "rgb(37, 99, 235)",
+            type: "pill",
+            title: "Start Voice Call",
+            subtitle: "Patient Registration"
+          }
+        }
+      });
+    };
+  })(document, "script");
+</script>
+</body>
+</html>
